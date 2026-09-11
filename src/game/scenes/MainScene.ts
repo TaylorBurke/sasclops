@@ -2,24 +2,20 @@ import Phaser from "phaser";
 import { loadSave, writeSave } from "../save";
 import { GRID_WIDTH, GRID_HEIGHT, TILE_WIDTH, TILE_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT, tileToWorld } from "../iso";
 
-const MOVE_DURATION_MS = 120;
-
-// Screen-relative movement: pressing "up" moves the player up the screen,
-// even though that maps to a diagonal step in the underlying iso grid.
-const DIRECTIONS = {
-  up: { dx: -1, dy: -1 },
-  down: { dx: 1, dy: 1 },
-  left: { dx: -1, dy: 1 },
-  right: { dx: 1, dy: -1 },
-} as const;
+// Screen-space speed (px/sec). Diagonal input is normalized below so 8-direction
+// movement covers this same screen distance per second regardless of angle —
+// without normalizing, a diagonal (both axes held) would move at sqrt(2)x speed.
+const PLAYER_SPEED = 220;
+const SAVE_INTERVAL_MS = 500;
 
 export class MainScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Container;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasd!: Record<keyof typeof DIRECTIONS, Phaser.Input.Keyboard.Key>;
+  private wasd!: Record<"up" | "down" | "left" | "right", Phaser.Input.Keyboard.Key>;
   private tileX = 8;
   private tileY = 6;
-  private isMoving = false;
+  private wasMoving = false;
+  private msSinceLastSave = 0;
 
   constructor() {
     super("main");
@@ -34,7 +30,7 @@ export class MainScene extends Phaser.Scene {
 
     this.drawTiles();
     this.player = this.createPlayer();
-    this.setPlayerPosition(this.tileX, this.tileY, this.player);
+    this.setPlayerPosition(this.tileX, this.tileY);
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = {
@@ -74,44 +70,53 @@ export class MainScene extends Phaser.Scene {
     return this.add.container(0, 0, [shadow, body]);
   }
 
-  private setPlayerPosition(gridX: number, gridY: number, target: Phaser.GameObjects.Container) {
+  private setPlayerPosition(gridX: number, gridY: number) {
     const { x, y } = tileToWorld(gridX, gridY);
-    target.setPosition(x, y);
-    target.setDepth(gridX + gridY);
+    this.player.setPosition(x, y);
+    this.player.setDepth(gridX + gridY);
   }
 
-  update() {
-    if (this.isMoving) return;
+  update(_time: number, delta: number) {
+    const left = this.cursors.left.isDown || this.wasd.left.isDown;
+    const right = this.cursors.right.isDown || this.wasd.right.isDown;
+    const up = this.cursors.up.isDown || this.wasd.up.isDown;
+    const down = this.cursors.down.isDown || this.wasd.down.isDown;
 
-    let direction: keyof typeof DIRECTIONS | null = null;
-    if (this.cursors.left.isDown || this.wasd.left.isDown) direction = "left";
-    else if (this.cursors.right.isDown || this.wasd.right.isDown) direction = "right";
-    else if (this.cursors.up.isDown || this.wasd.up.isDown) direction = "up";
-    else if (this.cursors.down.isDown || this.wasd.down.isDown) direction = "down";
+    let screenDX = 0;
+    let screenDY = 0;
+    if (right) screenDX += 1;
+    if (left) screenDX -= 1;
+    if (down) screenDY += 1;
+    if (up) screenDY -= 1;
 
-    if (!direction) return;
+    const isMoving = screenDX !== 0 || screenDY !== 0;
 
-    const { dx, dy } = DIRECTIONS[direction];
-    const nextX = Phaser.Math.Clamp(this.tileX + dx, 0, GRID_WIDTH - 1);
-    const nextY = Phaser.Math.Clamp(this.tileY + dy, 0, GRID_HEIGHT - 1);
-    if (nextX === this.tileX && nextY === this.tileY) return;
+    if (isMoving) {
+      // Normalize (Pythagorean) so a diagonal (magnitude sqrt(2)) doesn't outrun a
+      // cardinal move (magnitude 1) — both cover PLAYER_SPEED px/sec on screen.
+      const magnitude = Math.hypot(screenDX, screenDY);
+      const distance = PLAYER_SPEED * (delta / 1000);
+      const dx = (screenDX / magnitude) * distance;
+      const dy = (screenDY / magnitude) * distance;
 
-    this.tileX = nextX;
-    this.tileY = nextY;
-    this.isMoving = true;
+      // Screen space -> iso grid space (inverse of tileToWorld's projection).
+      const dGridX = dx / TILE_WIDTH + dy / TILE_HEIGHT;
+      const dGridY = dy / TILE_HEIGHT - dx / TILE_WIDTH;
 
-    const { x, y } = tileToWorld(this.tileX, this.tileY);
-    this.tweens.add({
-      targets: this.player,
-      x,
-      y,
-      duration: MOVE_DURATION_MS,
-      ease: "Linear",
-      onComplete: () => {
-        this.isMoving = false;
-        this.player.setDepth(this.tileX + this.tileY);
+      this.tileX = Phaser.Math.Clamp(this.tileX + dGridX, 0, GRID_WIDTH - 1);
+      this.tileY = Phaser.Math.Clamp(this.tileY + dGridY, 0, GRID_HEIGHT - 1);
+      this.setPlayerPosition(this.tileX, this.tileY);
+
+      this.msSinceLastSave += delta;
+      if (this.msSinceLastSave >= SAVE_INTERVAL_MS) {
         writeSave({ tileX: this.tileX, tileY: this.tileY });
-      },
-    });
+        this.msSinceLastSave = 0;
+      }
+      this.wasMoving = true;
+    } else if (this.wasMoving) {
+      writeSave({ tileX: this.tileX, tileY: this.tileY });
+      this.msSinceLastSave = 0;
+      this.wasMoving = false;
+    }
   }
 }
