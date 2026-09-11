@@ -39,3 +39,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# secrets / credentials (belt-and-suspenders; repo may go public later)
+*.key
+*.pem
+*.p12
+*.pfx
+*credentials*.json
+*service-account*.json
+.secrets/
