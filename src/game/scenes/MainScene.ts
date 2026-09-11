@@ -1,15 +1,22 @@
 import Phaser from "phaser";
 import { loadSave, writeSave } from "../save";
+import { GRID_WIDTH, GRID_HEIGHT, TILE_WIDTH, TILE_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT, tileToWorld } from "../iso";
 
-const TILE_SIZE = 32;
-const GRID_WIDTH = 16;
-const GRID_HEIGHT = 12;
 const MOVE_DURATION_MS = 120;
 
+// Screen-relative movement: pressing "up" moves the player up the screen,
+// even though that maps to a diagonal step in the underlying iso grid.
+const DIRECTIONS = {
+  up: { dx: -1, dy: -1 },
+  down: { dx: 1, dy: 1 },
+  left: { dx: -1, dy: 1 },
+  right: { dx: 1, dy: -1 },
+} as const;
+
 export class MainScene extends Phaser.Scene {
-  private player!: Phaser.GameObjects.Rectangle;
+  private player!: Phaser.GameObjects.Container;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasd!: Record<"up" | "down" | "left" | "right", Phaser.Input.Keyboard.Key>;
+  private wasd!: Record<keyof typeof DIRECTIONS, Phaser.Input.Keyboard.Key>;
   private tileX = 8;
   private tileY = 6;
   private isMoving = false;
@@ -25,28 +32,9 @@ export class MainScene extends Phaser.Scene {
       this.tileY = saved.tileY;
     }
 
-    for (let y = 0; y < GRID_HEIGHT; y++) {
-      for (let x = 0; x < GRID_WIDTH; x++) {
-        const isDark = (x + y) % 2 === 0;
-        this.add
-          .rectangle(
-            x * TILE_SIZE + TILE_SIZE / 2,
-            y * TILE_SIZE + TILE_SIZE / 2,
-            TILE_SIZE,
-            TILE_SIZE,
-            isDark ? 0x2f3542 : 0x3a4152
-          )
-          .setStrokeStyle(1, 0x1e222b);
-      }
-    }
-
-    this.player = this.add.rectangle(
-      this.tileX * TILE_SIZE + TILE_SIZE / 2,
-      this.tileY * TILE_SIZE + TILE_SIZE / 2,
-      TILE_SIZE * 0.7,
-      TILE_SIZE * 0.7,
-      0xffd166
-    );
+    this.drawTiles();
+    this.player = this.createPlayer();
+    this.setPlayerPosition(this.tileX, this.tileY, this.player);
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = {
@@ -56,22 +44,54 @@ export class MainScene extends Phaser.Scene {
       right: this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D),
     };
 
-    this.cameras.main.setBounds(0, 0, GRID_WIDTH * TILE_SIZE, GRID_HEIGHT * TILE_SIZE);
+    this.cameras.main.setBounds(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
     this.cameras.main.startFollow(this.player, true);
+  }
+
+  private drawTiles() {
+    const graphics = this.add.graphics();
+    for (let gy = 0; gy < GRID_HEIGHT; gy++) {
+      for (let gx = 0; gx < GRID_WIDTH; gx++) {
+        const { x, y } = tileToWorld(gx, gy);
+        const isDark = (gx + gy) % 2 === 0;
+        graphics.fillStyle(isDark ? 0x2f3542 : 0x3a4152, 1);
+        graphics.lineStyle(1, 0x1e222b, 1);
+        graphics.beginPath();
+        graphics.moveTo(x, y - TILE_HEIGHT / 2);
+        graphics.lineTo(x + TILE_WIDTH / 2, y);
+        graphics.lineTo(x, y + TILE_HEIGHT / 2);
+        graphics.lineTo(x - TILE_WIDTH / 2, y);
+        graphics.closePath();
+        graphics.fillPath();
+        graphics.strokePath();
+      }
+    }
+  }
+
+  private createPlayer(): Phaser.GameObjects.Container {
+    const shadow = this.add.ellipse(0, 4, TILE_WIDTH * 0.4, TILE_HEIGHT * 0.4, 0x000000, 0.35);
+    const body = this.add.ellipse(0, -TILE_HEIGHT * 0.6, TILE_WIDTH * 0.32, TILE_HEIGHT * 0.8, 0xffd166);
+    return this.add.container(0, 0, [shadow, body]);
+  }
+
+  private setPlayerPosition(gridX: number, gridY: number, target: Phaser.GameObjects.Container) {
+    const { x, y } = tileToWorld(gridX, gridY);
+    target.setPosition(x, y);
+    target.setDepth(gridX + gridY);
   }
 
   update() {
     if (this.isMoving) return;
 
-    let dx = 0;
-    let dy = 0;
-    if (this.cursors.left.isDown || this.wasd.left.isDown) dx = -1;
-    else if (this.cursors.right.isDown || this.wasd.right.isDown) dx = 1;
-    else if (this.cursors.up.isDown || this.wasd.up.isDown) dy = -1;
-    else if (this.cursors.down.isDown || this.wasd.down.isDown) dy = 1;
+    let direction: keyof typeof DIRECTIONS | null = null;
+    if (this.cursors.left.isDown || this.wasd.left.isDown) direction = "left";
+    else if (this.cursors.right.isDown || this.wasd.right.isDown) direction = "right";
+    else if (this.cursors.up.isDown || this.wasd.up.isDown) direction = "up";
+    else if (this.cursors.down.isDown || this.wasd.down.isDown) direction = "down";
 
-    if (dx === 0 && dy === 0) return;
+    if (!direction) return;
 
+    const { dx, dy } = DIRECTIONS[direction];
     const nextX = Phaser.Math.Clamp(this.tileX + dx, 0, GRID_WIDTH - 1);
     const nextY = Phaser.Math.Clamp(this.tileY + dy, 0, GRID_HEIGHT - 1);
     if (nextX === this.tileX && nextY === this.tileY) return;
@@ -80,19 +100,18 @@ export class MainScene extends Phaser.Scene {
     this.tileY = nextY;
     this.isMoving = true;
 
+    const { x, y } = tileToWorld(this.tileX, this.tileY);
     this.tweens.add({
       targets: this.player,
-      x: this.tileX * TILE_SIZE + TILE_SIZE / 2,
-      y: this.tileY * TILE_SIZE + TILE_SIZE / 2,
+      x,
+      y,
       duration: MOVE_DURATION_MS,
       ease: "Linear",
       onComplete: () => {
         this.isMoving = false;
+        this.player.setDepth(this.tileX + this.tileY);
         writeSave({ tileX: this.tileX, tileY: this.tileY });
       },
     });
   }
 }
-
-export const GRID_PIXEL_WIDTH = GRID_WIDTH * TILE_SIZE;
-export const GRID_PIXEL_HEIGHT = GRID_HEIGHT * TILE_SIZE;
