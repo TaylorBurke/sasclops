@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>sasclops</title>
+  <meta name="description" content="sasclops — radar placeholder">
+  <meta name="theme-color" content="#0b0704">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230b0704'/%3E%3Crect y='7' width='16' height='2' fill='%23ff8200'/%3E%3C/svg%3E">
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #0b0704;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+    }
+    .logo {
+      position: fixed;
+      inset: 0;
+      margin: auto;
+      width: min(72vw, 640px);
+      max-height: 70dvh;
+      object-fit: contain;
+      pointer-events: none;
+      filter: drop-shadow(0 0 6px rgba(255, 130, 0, 0.45));
+    }
+  </style>
+</head>
+<body>
+  <canvas id="radar" aria-hidden="true"></canvas>
+  <img class="logo" src="sasclops.png" alt="SASCLOPS — claritas ex datis, datum ex obscuris">
+  <script src="radar.js"></script>
+</body>
+</html>
