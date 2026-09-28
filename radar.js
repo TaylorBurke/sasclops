@@ -1,7 +1,12 @@
 // Radar placeholder: dark field, subtle orange grid, pulsing bar wiping top → bottom.
 (() => {
-  const BG = '#0b0704';
-  const ORANGE = '255, 130, 0';
+  const THEMES = {
+    lobby: { bg: '#0b0704', accent: '255, 130, 0', core: '255, 200, 140' },
+    room:  { bg: '#04070b', accent: '40, 150, 255', core: '170, 215, 255' },
+  };
+  // Only the digest lives here; the room's hash rotates (see issue tracker).
+  const ROOM_SHA256 = '6a71452318b7414a7890bfc8c2778b6e98389a7025bfce1219442d99a08b7a22';
+  let theme = THEMES.lobby;
   const CELL = 28;          // grid cell, CSS px
   const MAJOR_EVERY = 4;    // every Nth line is brighter
   const TRAIL = 220;        // lit wake behind the bar, CSS px
@@ -26,7 +31,7 @@
     const ox = Math.round((w % CELL) / 2);
     const oy = Math.round((h % CELL) / 2);
     const line = (x0, y0, x1, y1, i) => {
-      g.strokeStyle = `rgba(${ORANGE}, ${i % MAJOR_EVERY === 0 ? majorAlpha : minorAlpha})`;
+      g.strokeStyle = `rgba(${theme.accent}, ${i % MAJOR_EVERY === 0 ? majorAlpha : minorAlpha})`;
       g.beginPath();
       g.moveTo(x0, y0);
       g.lineTo(x1, y1);
@@ -84,7 +89,7 @@
     const pulse = reduceMotion ? 1 : 0.7 + 0.3 * Math.sin(now / 1000 * Math.PI * 2 * 0.7);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = BG;
+    ctx.fillStyle = theme.bg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(dimGrid, 0, 0);
 
@@ -94,8 +99,8 @@
     wakeCtx.clearRect(0, 0, wake.width, wake.height);
     wakeCtx.drawImage(litGrid, 0, -top);
     const fill = wakeCtx.createLinearGradient(0, 0, 0, wake.height);
-    fill.addColorStop(0, `rgba(${ORANGE}, 0)`);
-    fill.addColorStop(1, `rgba(${ORANGE}, ${0.10 * pulse})`);
+    fill.addColorStop(0, `rgba(${theme.accent}, 0)`);
+    fill.addColorStop(1, `rgba(${theme.accent}, ${0.10 * pulse})`);
     wakeCtx.fillStyle = fill;
     wakeCtx.fillRect(0, 0, wake.width, wake.height);
     wakeCtx.globalCompositeOperation = 'destination-in';
@@ -109,12 +114,12 @@
     // The bar itself: a soft glow band with a hot core line.
     ctx.scale(dpr, dpr);
     const glow = ctx.createLinearGradient(0, y - 18, 0, y + 18);
-    glow.addColorStop(0, `rgba(${ORANGE}, 0)`);
-    glow.addColorStop(0.5, `rgba(${ORANGE}, ${0.35 * pulse})`);
-    glow.addColorStop(1, `rgba(${ORANGE}, 0)`);
+    glow.addColorStop(0, `rgba(${theme.accent}, 0)`);
+    glow.addColorStop(0.5, `rgba(${theme.accent}, ${0.35 * pulse})`);
+    glow.addColorStop(1, `rgba(${theme.accent}, 0)`);
     ctx.fillStyle = glow;
     ctx.fillRect(0, y - 18, w, 36);
-    ctx.fillStyle = `rgba(255, 200, 140, ${0.85 * pulse})`;
+    ctx.fillStyle = `rgba(${theme.core}, ${0.85 * pulse})`;
     ctx.fillRect(0, y - 1, w, 2);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -123,7 +128,22 @@
     requestAnimationFrame(frame);
   }
 
+  async function checkRoom() {
+    const tag = location.hash.slice(1);
+    let inRoom = false;
+    if (tag && crypto.subtle) {
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(tag));
+      const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+      inRoom = hex === ROOM_SHA256;
+    }
+    theme = inRoom ? THEMES.room : THEMES.lobby;
+    document.documentElement.classList.toggle('room', inRoom);
+    resize();
+  }
+
   window.addEventListener('resize', resize);
+  window.addEventListener('hashchange', checkRoom);
   resize();
+  checkRoom();
   requestAnimationFrame(frame);
 })();
