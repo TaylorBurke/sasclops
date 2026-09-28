@@ -66,10 +66,10 @@
     .eye:focus-visible { outline: 2px solid rgb(var(--accent)); outline-offset: 2px; }
     .room .logo { display: none; }
 
-    /* Terminal: drops down from the top. */
+    /* Terminal: slides up from the bottom. */
     .term {
       position: fixed;
-      inset: 0 0 auto 0;
+      inset: auto 0 0 0;
       box-sizing: border-box;
       width: 100%;
       max-width: none;
@@ -78,27 +78,30 @@
       margin: 0;
       padding: 12px 16px;
       border: 0;
-      border-bottom: 1px solid rgb(var(--accent) / 0.6);
+      border-top: 1px solid rgb(var(--accent) / 0.6);
       background: var(--panel);
       box-shadow: 0 0 24px rgb(var(--accent) / 0.25);
       color: rgb(var(--accent));
       font: 22px/1.2 'VT323', ui-monospace, monospace;
       text-shadow: 0 0 4px rgb(var(--accent) / 0.5);
       flex-direction: column;
-      translate: 0 -100%;
+      translate: 0 100%;
       transition: translate 0.25s ease-out, overlay 0.25s allow-discrete, display 0.25s allow-discrete;
     }
     .term[open] { display: flex; translate: 0 0; }
-    @starting-style { .term[open] { translate: 0 -100%; } }
+    @starting-style { .term[open] { translate: 0 100%; } }
     .term::backdrop { background: transparent; }
     .term-out {
       flex: 1;
+      display: flex;
+      flex-direction: column;
       overflow-y: auto;
       white-space: pre-wrap;
       overflow-wrap: anywhere;
       scrollbar-width: thin;
       scrollbar-color: rgb(var(--accent) / 0.5) transparent;
     }
+    .term-out > :first-child { margin-top: auto; }   /* stack output down against the prompt */
     .term-out .echo { opacity: 0.75; }
     .term-out .err { color: rgb(255 90 70); }
     .room .term-out .err { color: rgb(255 120 160); }
