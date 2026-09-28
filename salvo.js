@@ -8,7 +8,7 @@
   const FADE = 1800;           // ms: phosphor decay after the bar passes
   const FLOOR = 0.3;           // refreshed elements never fade below this
   const SHOT_FADE = 2600;      // ms: a white shot lights once, then fades for good
-  const END_FADE = 4000;       // ms: the whole board after the game ends
+  const END_FADE = 2000;       // ms: the whole board after the game ends
   const RGB = {
     grid: '40, 150, 255', ship: '40, 150, 255', shot: '255, 255, 255', hit: '255, 70, 70',
     plot: '255, 130, 0',       // remembered misses, with plot memory on
@@ -61,6 +61,7 @@
       hits: 0,
     };
     sasclops.term.takeOver({ prompt: 'salvo>', onLine });
+    sasclops.showGrid(false); // the game grid is the only grid while playing
     print('SALVO — fire control online.');
     print('the grid is 10×10: columns a–j, rows 1–10. type quit to stand down.');
     if (plotMemory) print('plot memory online: past strikes stay on the grid.');
@@ -69,6 +70,12 @@
 
   function end(message, kind) {
     print(message, kind);
+    if (!game.startedAt) {        // quit before the board ever came up
+      sasclops.term.release();
+      sasclops.showGrid(true);
+      game = null;
+      return;
+    }
     game.phase = 'over';
     game.endedAt = performance.now();
     sasclops.term.release();
@@ -176,16 +183,26 @@
     if (!game) return;
     if (!sasclops.inRoom()) {                     // left the room mid-game
       if (game.phase !== 'over') sasclops.term.release();
+      sasclops.showGrid(true);
       game = null;
       return;
     }
     if (game.phase === 'place') return;
+    // Bring the background grid back only once the board has mostly faded,
+    // so the two grids are never both on screen.
+    if (game.endedAt && !game.gridBack && now - game.endedAt > END_FADE * 2) {
+      sasclops.showGrid(true);
+      game.gridBack = true;
+    }
     if (game.endedAt && now - game.endedAt > END_FADE * 5) {
       game = null;
       return;
     }
 
-    board = layout(w, h);
+    // Laid out once per game (and on resize), so opening or closing the terminal
+    // doesn't move the board out from under the sweep.
+    if (!game.board || game.board.w !== w || game.board.h !== h) game.board = { ...layout(w, h), w, h };
+    board = game.board;
     reveal(now);
     if (!game) return;
     const { x0, y0, s } = board;

@@ -14,6 +14,7 @@
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const SWEEP_MS = reduceMotion ? 18000 : 7200;
   const SWITCH_MS = reduceMotion ? 0 : 2400;   // how long the room-change sweep takes
+  const GRID_FADE_MS = reduceMotion ? 0 : 1200; // background grid hiding/showing (e.g. during salvo)
 
   const canvas = document.getElementById('radar');
   const ctx = canvas.getContext('2d');
@@ -24,6 +25,7 @@
   let theme = THEMES.lobby;
   // While switching rooms: { from, to, start } — `to` is painted above the bar.
   let change = null;
+  let gridAlpha = 1, gridTarget = 1, lastFrame = 0;
   const overlays = [];      // extra layers drawn each frame, e.g. salvo.js's board
   const wake = document.createElement('canvas');
   const wakeCtx = wake.getContext('2d');
@@ -96,13 +98,17 @@
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = t.bg;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalAlpha = gridAlpha;
     ctx.drawImage(t.dimGrid, 0, 0);
+    ctx.globalAlpha = 1;
 
     // Wake: the bright grid, masked by a gradient that fades out above the bar.
     const top = (y - TRAIL) * dpr;
     wakeCtx.globalCompositeOperation = 'source-over';
     wakeCtx.clearRect(0, 0, wake.width, wake.height);
+    wakeCtx.globalAlpha = gridAlpha;
     wakeCtx.drawImage(t.litGrid, 0, -top);
+    wakeCtx.globalAlpha = 1;
     const fill = wakeCtx.createLinearGradient(0, 0, 0, wake.height);
     fill.addColorStop(0, `rgba(${t.accent}, 0)`);
     fill.addColorStop(1, `rgba(${t.accent}, ${0.10 * pulse})`);
@@ -142,6 +148,9 @@
   }
 
   function frame(now) {
+    const step = GRID_FADE_MS ? (now - lastFrame) / GRID_FADE_MS : 1;
+    gridAlpha = gridTarget > gridAlpha ? Math.min(gridTarget, gridAlpha + step) : Math.max(gridTarget, gridAlpha - step);
+    lastFrame = now;
     const pulse = reduceMotion ? 1 : 0.7 + 0.3 * Math.sin(now / 1000 * Math.PI * 2 * 0.7);
     let y = ((now % SWEEP_MS) / SWEEP_MS) * (h + TRAIL); // bar position, CSS px
 
@@ -208,6 +217,7 @@
   // Used by terminal.js and salvo.js.
   window.sasclops = {
     addOverlay: (draw) => overlays.push(draw),
+    showGrid: (on) => { gridTarget = on ? 1 : 0; },
     // When the bar last crossed / next crosses height y, on its steady rhythm
     // (times on the performance.now() clock, same as requestAnimationFrame).
     lastCross: (y, t) => Math.floor((t - phase(y)) / SWEEP_MS) * SWEEP_MS + phase(y),
