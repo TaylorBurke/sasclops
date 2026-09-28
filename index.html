@@ -47,7 +47,7 @@
       display: block;
       width: 100%;
       height: auto;
-      filter: drop-shadow(0 0 6px rgb(255 130 0 / 0.45));
+      opacity: 0;   /* drawn on the canvas by radar.js; kept for layout, alt text and the eye */
     }
     .eye {
       position: absolute;
@@ -130,11 +130,11 @@
       80%  { filter: saturate(0); translate: 0 -2px; }
       100% { filter: none; translate: 0 0; }
     }
-    .glitch canvas, .glitch .logo img, .glitch .term { animation: glitch 0.9s steps(1); }
+    .glitch canvas, .glitch .term { animation: glitch 0.9s steps(1); }
 
     @media (prefers-reduced-motion: reduce) {
       .term { transition: none; }
-      .glitch canvas, .glitch .logo img, .glitch .term { animation: none; }
+      .glitch canvas, .glitch .term { animation: none; }
     }
   </style>
 </head>

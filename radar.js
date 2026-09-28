@@ -15,10 +15,19 @@
   const SWEEP_MS = reduceMotion ? 18000 : 7200;
   const SWITCH_MS = reduceMotion ? 0 : 2400;   // how long the room-change sweep takes
   const GRID_FADE_MS = reduceMotion ? 0 : 1200; // background grid hiding/showing (e.g. during salvo)
+  // Logo phosphor: burned back in by each pass of the bar, then fading until the next.
+  const LOGO_FLOOR = 0.15;  // dimmest it gets, just before the bar returns
+  const LOGO_TAU = 2600;    // ms: fade after the bar passes
+  const FLARE_TAU = 320;    // ms: the hot band riding just behind the bar
 
   const canvas = document.getElementById('radar');
   const ctx = canvas.getContext('2d');
   const logo = document.querySelector('.logo');
+  const logoImg = logo.querySelector('img');
+  // Offscreen layers: the masked logo, a hot-tinted silhouette, and that silhouette masked to the flare.
+  const logoLayer = document.createElement('canvas');
+  const tint = document.createElement('canvas');
+  const flare = document.createElement('canvas');
 
   let w = 0, h = 0, dpr = 1;
   let vignette;
@@ -134,17 +143,70 @@
     ctx.fillRect(0, y - 1, w, 2);
   }
 
-  // The logo only exists in the lobby; during a switch it's cut off at the bar.
-  function clipLogo(y) {
-    if (!change) {
-      logo.style.clipPath = '';
-      return;
+  // A vertical destination-in mask over the logo rect r: each row's alpha is brightness(age),
+  // where age is how long ago the bar crossed that row.
+  function ageMask(g, r, now, barY, brightness) {
+    const stops = [];
+    for (let i = 0; i <= 24; i++) {
+      const f = i / 24;
+      stops.push([f, brightness(now - lastCross(r.top + f * r.height, now))]);
     }
+    // Hard edge at the bar: freshly burned just above it, oldest just below.
+    const fb = (barY - r.top) / r.height;
+    if (fb > 0 && fb < 1) stops.push([fb - 0.0005, brightness(0)], [fb + 0.0005, brightness(SWEEP_MS)]);
+    const grad = g.createLinearGradient(0, 0, 0, g.canvas.height);
+    for (const [f, a] of stops.sort((p, q) => p[0] - q[0])) grad.addColorStop(Math.min(1, Math.max(0, f)), `rgba(0, 0, 0, ${a})`);
+    g.globalCompositeOperation = 'destination-in';
+    g.fillStyle = grad;
+    g.fillRect(0, 0, g.canvas.width, g.canvas.height);
+    g.globalCompositeOperation = 'source-over';
+  }
+
+  // The logo lives in the lobby, drawn as phosphor. During a room switch it's cut off at the bar.
+  function drawLogo(now, y) {
+    if ((theme === THEMES.room && !change) || !logoImg.complete || !logoImg.naturalWidth) return;
     const r = logo.getBoundingClientRect();
-    const cut = Math.min(Math.max(y - r.top, 0), r.height);
-    logo.style.clipPath = change.to === THEMES.room
-      ? `inset(${cut}px 0 0 0)`                 // leaving the lobby: erased from the top
-      : `inset(0 0 ${r.height - cut}px 0)`;     // returning: redrawn from the top
+    const W = Math.round(r.width * dpr), H = Math.round(r.height * dpr);
+    if (!W || !H) return;
+    if (logoLayer.width !== W || logoLayer.height !== H) {
+      for (const c of [logoLayer, tint, flare]) { c.width = W; c.height = H; }
+      const t = tint.getContext('2d');
+      t.drawImage(logoImg, 0, 0, W, H);
+      t.globalCompositeOperation = 'source-in';
+      t.fillStyle = `rgb(${THEMES.lobby.core})`;
+      t.fillRect(0, 0, W, H);
+    }
+
+    const lg = logoLayer.getContext('2d');
+    lg.clearRect(0, 0, W, H);
+    lg.drawImage(logoImg, 0, 0, W, H);
+    if (!reduceMotion) ageMask(lg, r, now, y, (age) => LOGO_FLOOR + (1 - LOGO_FLOOR) * Math.exp(-age / LOGO_TAU));
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (change) {
+      ctx.beginPath();
+      if (change.to === THEMES.room) ctx.rect(0, y * dpr, canvas.width, canvas.height); // erased from the top
+      else ctx.rect(0, 0, canvas.width, y * dpr);                                       // redrawn from the top
+      ctx.clip();
+    }
+    const x0 = r.left * dpr, y0 = r.top * dpr;
+    ctx.shadowColor = 'rgba(255, 130, 0, 0.45)';
+    ctx.shadowBlur = 6 * dpr;
+    ctx.drawImage(logoLayer, x0, y0);
+
+    // The burn: a hot, whitish copy riding just behind the bar, with bloom and a little jitter.
+    if (!reduceMotion && !change && y > r.top && y < r.bottom + 60) {
+      const fg = flare.getContext('2d');
+      fg.clearRect(0, 0, W, H);
+      fg.drawImage(tint, 0, 0);
+      ageMask(fg, r, now, y, (age) => 0.9 * Math.exp(-age / FLARE_TAU));
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.shadowColor = `rgba(${THEMES.lobby.core}, 0.9)`;
+      ctx.shadowBlur = 10 * dpr;
+      ctx.drawImage(flare, x0 + (Math.random() - 0.5) * 2 * dpr, y0);
+    }
+    ctx.restore();
   }
 
   function frame(now) {
@@ -171,7 +233,7 @@
       }
     }
     if (!change) paint(theme, y, pulse);
-    clipLogo(y);
+    drawLogo(now, y);
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     for (const draw of overlays) draw(ctx, now, w, h);
@@ -213,6 +275,7 @@
 
   // Offset into the sweep cycle at which the bar reaches height y (CSS px).
   const phase = (y) => (y / (h + TRAIL)) * SWEEP_MS;
+  const lastCross = (y, t) => Math.floor((t - phase(y)) / SWEEP_MS) * SWEEP_MS + phase(y);
 
   // Used by terminal.js and salvo.js.
   window.sasclops = {
@@ -220,7 +283,7 @@
     showGrid: (on) => { gridTarget = on ? 1 : 0; },
     // When the bar last crossed / next crosses height y, on its steady rhythm
     // (times on the performance.now() clock, same as requestAnimationFrame).
-    lastCross: (y, t) => Math.floor((t - phase(y)) / SWEEP_MS) * SWEEP_MS + phase(y),
+    lastCross,
     nextCross: (y, t) => Math.ceil((t - phase(y)) / SWEEP_MS) * SWEEP_MS + phase(y),
     isRoom,
     inRoom: () => (change ? change.to : theme) === THEMES.room,
