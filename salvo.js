@@ -194,7 +194,7 @@
     ctx.lineWidth = 1;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = `${Math.round(s * 0.7)}px VT323, ui-monospace, monospace`;
+    ctx.font = `${Math.round(s * 0.45)}px 'JetBrains Mono', ui-monospace, monospace`;
 
     // Column labels.
     const lb = lit(y0 - s / 2, now, game.startedAt);
