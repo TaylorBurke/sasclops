@@ -1,0 +1,27 @@
+name: Rotate room
+
+on:
+  schedule:
+    - cron: '0 0 * * *'   # daily, 00:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: rotate-room
+
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Rotate
+        run: node scripts/rotate-room.mjs
+
+      - name: Commit and push
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am 'Rotate room'
+          git push
