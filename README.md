@@ -44,12 +44,27 @@ access granted.
 $ cd ~                                   # back to the lobby
 ```
 
+Inside the room, the next layer:
+
+```
+$ ls -a                                  # reveals .operator_log
+$ cat .operator_log                      # entries 001 002 003 005 008 013 ???
+$ help                                   # the room's help lists restore N
+$ restore 21                             # Fibonacci: the next entry is 021
+$ cat .operator_log                      # entry 021 says to type salvo
+$ salvo                                  # the minigame (coming, #6)
+```
+
+The entry 021 text is stored XOR-sealed with its own number, so the answer isn't readable in the source.
+
 (The hashes above are examples; they change daily.)
 
 | Command | Notes |
 | --- | --- |
 | `ls`, `cat`, `grep [-i]`, `echo` | Work on the site's real files, fetched live; pipes (`\|`) supported |
 | `ls -a` / `ls -la` | In the room only, also reveals `.operator_log` (lore). Room `motd` hints at it: *not everything here is visible.* |
+| `restore N` | Room only, listed in the room's `help`. Log entries run 001, 002, 003, 005, 008, 013 (Fibonacci), so the corrupted entry is **021**: `restore 21` rebuilds it. Wrong numbers get `checksum mismatch`. Remembered in the browser. |
+| `salvo` | Room only; the restored entry points here. Placeholder until the Battleship minigame lands (#6). |
 | `base64 [-d]` | Reads from a pipe |
 | `cd /#<hash>` / `cd ~` | Enter / leave the room; wrong hashes get `no such room` |
 | `whoami` | `a visitor, for now` in the lobby; `one who sees` in the room |

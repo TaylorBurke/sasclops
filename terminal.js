@@ -2,17 +2,44 @@
 // with pipes, so the room can be found without leaving the page.
 (() => {
   const FILES = ['index.html', 'radar.js', 'terminal.js', 'sasclops.png'];
+  // The room's dotfile. Entry numbers follow Fibonacci; the corrupted one is sealed,
+  // XORed with its own number, so only `restore <that number>` can open it.
+  const LOG_HEAD = 'OPERATOR LOG — SASCLOPS STATION\n';
+  const LOG_ENTRIES = {
+    1: 'the sweep holds. grid nominal. nothing on the scope.',
+    2: 'a return at the edge of the grid. faint. gone on the next pass.',
+    3: 'the returns come back every night, a little closer. always after rotation.',
+    5: 'i moved the door again. they keep finding it.',
+    8: "the eye doesn't blink. i've stopped asking it to.",
+    13: 'if you are reading this, you found the door. that makes you a return too.',
+  };
+  const CORRUPTED = 'entry ???  ▒▒▒▒ ▒▒ ▒▒▒▒▒▒▒ ▒▒▒▒ ▒▒▒ ▒▒▒▒▒▒ [corrupted]';
+  const SEALED = 'V19GQ0sRAgMDERJFWlQSQ1dFR0NcQhJQQFRcFkYRRVRTRVpUQB8SRVpUSxZAVBJZR11eQh4RQERcX1tfVRFBWF5UXEUSRFxVV0MSRVpUElZAWFYfOBESERIREhESERIRWxFRUFwWRhFBWFxaEkVaVF8RU11dX1cfEldbQ1cRUV5cRUBeXhFbQhJIXURAQhJfXUYIEUZIQlQSQlNdRF4=';
+  const RESTORED_KEY = 'sasclops.restored';
+  let restored = null;
+  try { restored = localStorage.getItem(RESTORED_KEY); } catch {}
+
+  const pad = (n) => String(n).padStart(3, '0');
+
+  function operatorLog() {
+    const entries = Object.entries(LOG_ENTRIES).map(([n, text]) => `entry ${pad(n)}  ${text}`);
+    return [LOG_HEAD, ...entries, restored ?? CORRUPTED].join('\n');
+  }
+
+  function unseal(n) {
+    const key = String(n);
+    try {
+      const bytes = Uint8Array.from(atob(SEALED), (c, i) => c.charCodeAt(0) ^ key.charCodeAt(i % key.length));
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      return text.startsWith(`entry ${pad(n)} `) ? text : null;
+    } catch {
+      return null;
+    }
+  }
+
   // Dotfiles that only exist inside the room; `ls -a` reveals them.
   const HIDDEN = {
-    '.operator_log': `OPERATOR LOG — SASCLOPS STATION
-
-entry 001  the sweep holds. grid nominal. nothing on the scope.
-entry 014  a return at the edge of the grid. faint. gone on the next pass.
-entry 022  the returns come back every night, a little closer. always after rotation.
-entry 031  i moved the door again. they keep finding it.
-entry 040  the eye doesn't blink. i've stopped asking it to.
-entry 047  if you are reading this, you found the door. that makes you a return too.
-entry ???  ▒▒▒▒ ▒▒ ▒▒▒▒▒▒▒ ▒▒▒▒ ▒▒▒ ▒▒▒▒▒▒ [corrupted]`,
+    '.operator_log': operatorLog,
   };
   const HELP = `commands:
   ls              list files
@@ -24,6 +51,10 @@ entry ???  ▒▒▒▒ ▒▒ ▒▒▒▒▒▒▒ ▒▒▒▒ ▒▒▒ ▒�
   whoami  motd  clear  exit
 
 chain commands with |   e.g.  cat index.html | grep title`;
+  const ROOM_HELP = HELP.replace(
+    '  whoami',
+    '  restore N       rebuild a corrupted log entry\n  whoami',
+  );
 
   const dialog = document.querySelector('.term');
   const out = dialog.querySelector('.term-out');
@@ -82,7 +113,7 @@ chain commands with |   e.g.  cat index.html | grep title`;
   async function readFile(cmd, name) {
     const file = name.replace(/^(\.\/|\/)/, '');
     if (file === '.' || file === '..' || file === '') throw new ShellError(`${cmd}: ${name}: Is a directory`);
-    if (Object.hasOwn(HIDDEN, file) && sasclops.inRoom()) return HIDDEN[file];
+    if (Object.hasOwn(HIDDEN, file) && sasclops.inRoom()) return HIDDEN[file]();
     if (!FILES.includes(file)) throw new ShellError(`${cmd}: ${name}: No such file or directory`);
     if (file.endsWith('.png')) throw new ShellError(`${cmd}: ${name}: binary file (it's a picture of me)`);
     const res = await fetch(file, { cache: 'no-store' });
@@ -106,7 +137,7 @@ chain commands with |   e.g.  cat index.html | grep title`;
   }
 
   const commands = {
-    help: () => HELP,
+    help: () => (sasclops.inRoom() ? ROOM_HELP : HELP),
     ls(args) {
       const flags = args.filter((a) => a.startsWith('-')).join('');
       const bad = flags.replace(/[-al]/g, '');
@@ -172,6 +203,20 @@ chain commands with |   e.g.  cat index.html | grep title`;
       return 'access granted.';
     },
 
+    restore(args) {
+      const arg = args[0];
+      if (!arg || !/^\d+$/.test(arg)) throw new ShellError('usage: restore ENTRY_NUMBER');
+      const n = Number(arg);
+      if (Object.hasOwn(LOG_ENTRIES, n) || (restored && unseal(n))) return `entry ${pad(n)} is intact.`;
+      const text = unseal(n);
+      if (!text) throw new ShellError(`restore: entry ${pad(n)}: checksum mismatch`);
+      restored = text;
+      try { localStorage.setItem(RESTORED_KEY, text); } catch {}
+      return `entry ${pad(n)} restored.`;
+    },
+
+    salvo: () => 'SALVO — fire control offline.\nthe hulls are still moving into position. try again after a few rotations.',
+
     rm(args) {
       const flags = args.filter((a) => a.startsWith('-')).join('');
       const everything = args.some((a) => a === '/' || a === '/*');
@@ -187,7 +232,8 @@ chain commands with |   e.g.  cat index.html | grep title`;
   async function run(line) {
     let stdin = '';
     for (const [name, ...args] of parse(line)) {
-      const cmd = Object.hasOwn(commands, name) ? commands[name] : null;
+      const roomOnly = name === 'restore' || name === 'salvo';
+      const cmd = Object.hasOwn(commands, name) && (!roomOnly || sasclops.inRoom()) ? commands[name] : null;
       if (!cmd) throw new ShellError(`sasclops: command not found: ${name}`);
       stdin = (await cmd(args, stdin)) ?? '';
     }
