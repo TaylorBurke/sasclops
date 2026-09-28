@@ -24,6 +24,7 @@
   let theme = THEMES.lobby;
   // While switching rooms: { from, to, start } — `to` is painted above the bar.
   let change = null;
+  const overlays = [];      // extra layers drawn each frame, e.g. salvo.js's board
   const wake = document.createElement('canvas');
   const wakeCtx = wake.getContext('2d');
 
@@ -163,6 +164,9 @@
     if (!change) paint(theme, y, pulse);
     clipLogo(y);
 
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (const draw of overlays) draw(ctx, now, w, h);
+
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(vignette, 0, 0);
     requestAnimationFrame(frame);
@@ -198,8 +202,16 @@
     setRoom(await isRoom(location.hash.slice(1)), animate);
   }
 
-  // Used by terminal.js.
+  // Offset into the sweep cycle at which the bar reaches height y (CSS px).
+  const phase = (y) => (y / (h + TRAIL)) * SWEEP_MS;
+
+  // Used by terminal.js and salvo.js.
   window.sasclops = {
+    addOverlay: (draw) => overlays.push(draw),
+    // When the bar last crossed / next crosses height y, on its steady rhythm
+    // (times on the performance.now() clock, same as requestAnimationFrame).
+    lastCross: (y, t) => Math.floor((t - phase(y)) / SWEEP_MS) * SWEEP_MS + phase(y),
+    nextCross: (y, t) => Math.ceil((t - phase(y)) / SWEEP_MS) * SWEEP_MS + phase(y),
     isRoom,
     inRoom: () => (change ? change.to : theme) === THEMES.room,
     leave() {

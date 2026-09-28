@@ -17,6 +17,7 @@ python3 -m http.server 4173   # preview at http://127.0.0.1:4173
 | `index.html` | Page, styles, terminal markup, and the leaked room hash |
 | `radar.js` | Canvas radar, room check, and the sweep transition between rooms |
 | `terminal.js` | The hidden terminal and its commands |
+| `salvo.js` | SALVO, the Battleship minigame, drawn on the radar canvas |
 | `scripts/rotate-room.mjs` | Picks a new room hash; run daily by `.github/workflows/rotate-room.yml` |
 
 ## The secret room (spoilers)
@@ -52,7 +53,7 @@ $ cat .operator_log                      # entries 001 002 003 005 008 013 ???
 $ help                                   # the room's help lists restore N
 $ restore 21                             # Fibonacci: the next entry is 021
 $ cat .operator_log                      # entry 021 says to type salvo
-$ salvo                                  # the minigame (coming, #6)
+$ salvo                                  # the minigame
 ```
 
 The entry 021 text is stored XOR-sealed with its own number, so the answer isn't readable in the source.
@@ -64,7 +65,7 @@ The entry 021 text is stored XOR-sealed with its own number, so the answer isn't
 | `ls`, `cat`, `grep [-i]`, `echo` | Work on the site's real files, fetched live; pipes (`\|`) supported |
 | `ls -a` / `ls -la` | In the room only, also reveals `.operator_log` (lore). Room `motd` hints at it: *not everything here is visible.* |
 | `restore N` | Room only, listed in the room's `help`. Log entries run 001, 002, 003, 005, 008, 013 (Fibonacci), so the corrupted entry is **021**: `restore 21` rebuilds it. Wrong numbers get `checksum mismatch`. Remembered in the browser. |
-| `salvo` | Room only; the restored entry points here. Placeholder until the Battleship minigame lands (#6). |
+| `salvo` | Room only; the restored entry points here. Starts SALVO (below). |
 | `base64 [-d]` | Reads from a pipe |
 | `cd /#<hash>` / `cd ~` | Enter / leave the room; wrong hashes get `no such room` |
 | `whoami` | `a visitor, for now` in the lobby; `one who sees` in the room |
@@ -72,3 +73,23 @@ The entry 021 text is stored XOR-sealed with its own number, so the answer isn't
 | `sudo …` | `nice try.` |
 | `rm -rf /` | The screen glitches, then `…just kidding.` |
 | `clear`, `exit`, `help` | As expected; ↑/↓ recall history |
+
+### SALVO
+
+Battleship against a hidden fleet, played on the radar above the terminal.
+
+1. `salvo` asks where to launch counterstrikes from: a coordinate like `e5`. That cell is your ship, and one hit on it loses the game.
+2. The enemy hides **3 ships, each 4 tiles long**, horizontal or vertical, and **fires first** at a random cell.
+3. Take turns: type `a`–`j` plus `1`–`10` (e.g. `c7`) to fire. `quit` stands down.
+4. Hit every enemy tile to win: `the returns have all been cleared, stand by`.
+
+Everything waits for the sweep. The board appears on the next pass after you pick your position, and each shot is shown **and reported** only when the bar crosses its row.
+
+| On the board | Look | Refreshed by each sweep? |
+| --- | --- | --- |
+| Frame, grid, labels | blue | yes; burns back in, then fades toward a floor |
+| Your ship | solid blue square | yes |
+| Any shot | white square | no; flashes once, then fades away |
+| Hit on an enemy ship | red square | yes |
+
+`radar.js` exposes `sasclops.addOverlay(draw)` and `sasclops.lastCross(y, t)` / `nextCross(y, t)` (when the bar crosses height `y`); `terminal.js` exposes `sasclops.term.takeOver()` so a program can borrow the prompt. Follow-ups: smarter enemy (#9), win reward (#10).

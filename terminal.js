@@ -1,7 +1,7 @@
 // The terminal: press `i` (or tap the eye) to open. A tiny shell over the site's own files,
 // with pipes, so the room can be found without leaving the page.
 (() => {
-  const FILES = ['index.html', 'radar.js', 'terminal.js', 'sasclops.png'];
+  const FILES = ['index.html', 'radar.js', 'terminal.js', 'salvo.js', 'sasclops.png'];
   // The room's dotfile. Entry numbers follow Fibonacci; the corrupted one is sealed,
   // XORed with its own number, so only `restore <that number>` can open it.
   const LOG_HEAD = 'OPERATOR LOG — SASCLOPS STATION\n';
@@ -64,6 +64,8 @@ chain commands with |   e.g.  cat index.html | grep title`;
   const past = [];
   let recall = 0;
   let booted = false;
+  // A program (like salvo) that has taken over the prompt: { prompt, onLine(line) }.
+  let takeover = null;
 
   class ShellError extends Error {}
 
@@ -80,7 +82,7 @@ chain commands with |   e.g.  cat index.html | grep title`;
   }
 
   function refreshPrompt() {
-    prompt.textContent = `visitor@sasclops:${where()}$`;
+    prompt.textContent = takeover ? takeover.prompt : `visitor@sasclops:${where()}$`;
   }
 
   // "a | b 'c d'" → [['a'], ['b', 'c d']]
@@ -215,7 +217,11 @@ chain commands with |   e.g.  cat index.html | grep title`;
       return `entry ${pad(n)} restored.`;
     },
 
-    salvo: () => 'SALVO — fire control offline.\nthe hulls are still moving into position. try again after a few rotations.',
+    salvo() {
+      if (!sasclops.salvo) return 'SALVO — fire control offline. try again later.';
+      sasclops.salvo.start();
+      return '';
+    },
 
     rm(args) {
       const flags = args.filter((a) => a.startsWith('-')).join('');
@@ -249,12 +255,17 @@ chain commands with |   e.g.  cat index.html | grep title`;
     past.push(line);
     recall = past.length;
     try {
+      if (takeover) {
+        await takeover.onLine(line);
+        return;
+      }
       const result = await run(line);
       if (result) print(result);
     } catch (err) {
       print(err instanceof ShellError ? err.message : `sasclops: ${err.message}`, 'err');
+    } finally {
+      refreshPrompt();
     }
-    refreshPrompt();
   });
 
   input.addEventListener('keydown', (e) => {
@@ -282,4 +293,11 @@ chain commands with |   e.g.  cat index.html | grep title`;
     open();
   });
   document.querySelector('.eye').addEventListener('click', open);
+
+  // Used by salvo.js to borrow the prompt.
+  sasclops.term = {
+    print,
+    takeOver(program) { takeover = program; refreshPrompt(); },
+    release() { takeover = null; refreshPrompt(); },
+  };
 })();
