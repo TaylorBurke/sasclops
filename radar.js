@@ -5,7 +5,7 @@
     room:  { bg: '#04070b', accent: '40, 150, 255', core: '170, 215, 255' },
   };
   // Only the digest lives here; the room's hash rotates (see issue tracker).
-  const ROOM_SHA256 = '6a71452318b7414a7890bfc8c2778b6e98389a7025bfce1219442d99a08b7a22';
+  const ROOM_SHA256 = 'e878cdf2c8a09012ef364515a3a9f99ad81eb7d8730fea7bf03ac92eaf7d99a1';
   let theme = THEMES.lobby;
   const CELL = 28;          // grid cell, CSS px
   const MAJOR_EVERY = 4;    // every Nth line is brighter
