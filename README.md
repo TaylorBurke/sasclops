@@ -49,6 +49,7 @@ $ cd ~                                   # back to the lobby
 | Command | Notes |
 | --- | --- |
 | `ls`, `cat`, `grep [-i]`, `echo` | Work on the site's real files, fetched live; pipes (`\|`) supported |
+| `ls -a` / `ls -la` | In the room only, also reveals `.operator_log` (lore). Room `motd` hints at it: *not everything here is visible.* |
 | `base64 [-d]` | Reads from a pipe |
 | `cd /#<hash>` / `cd ~` | Enter / leave the room; wrong hashes get `no such room` |
 | `whoami` | `a visitor, for now` in the lobby; `one who sees` in the room |

@@ -2,6 +2,18 @@
 // with pipes, so the room can be found without leaving the page.
 (() => {
   const FILES = ['index.html', 'radar.js', 'terminal.js', 'sasclops.png'];
+  // Dotfiles that only exist inside the room; `ls -a` reveals them.
+  const HIDDEN = {
+    '.operator_log': `OPERATOR LOG — SASCLOPS STATION
+
+entry 001  the sweep holds. grid nominal. nothing on the scope.
+entry 014  a return at the edge of the grid. faint. gone on the next pass.
+entry 022  the returns come back every night, a little closer. always after rotation.
+entry 031  i moved the door again. they keep finding it.
+entry 040  the eye doesn't blink. i've stopped asking it to.
+entry 047  if you are reading this, you found the door. that makes you a return too.
+entry ???  ▒▒▒▒ ▒▒ ▒▒▒▒▒▒▒ ▒▒▒▒ ▒▒▒ ▒▒▒▒▒▒ [corrupted]`,
+  };
   const HELP = `commands:
   ls              list files
   cat FILE        print a file
@@ -69,6 +81,8 @@ chain commands with |   e.g.  cat index.html | grep title`;
 
   async function readFile(cmd, name) {
     const file = name.replace(/^(\.\/|\/)/, '');
+    if (file === '.' || file === '..' || file === '') throw new ShellError(`${cmd}: ${name}: Is a directory`);
+    if (Object.hasOwn(HIDDEN, file) && sasclops.inRoom()) return HIDDEN[file];
     if (!FILES.includes(file)) throw new ShellError(`${cmd}: ${name}: No such file or directory`);
     if (file.endsWith('.png')) throw new ShellError(`${cmd}: ${name}: binary file (it's a picture of me)`);
     const res = await fetch(file, { cache: 'no-store' });
@@ -93,14 +107,21 @@ chain commands with |   e.g.  cat index.html | grep title`;
 
   const commands = {
     help: () => HELP,
-    ls: () => FILES.join('  '),
+    ls(args) {
+      const flags = args.filter((a) => a.startsWith('-')).join('');
+      const bad = flags.replace(/[-al]/g, '');
+      if (bad) throw new ShellError(`ls: invalid option -- '${bad[0]}'`);
+      const hidden = sasclops.inRoom() ? Object.keys(HIDDEN) : [];
+      const names = flags.includes('a') ? ['.', '..', ...hidden, ...FILES] : FILES;
+      return names.join(flags.includes('l') ? '\n' : '  ');
+    },
     echo: (args) => args.join(' '),
     clear: () => { out.replaceChildren(); return ''; },
     exit: () => { dialog.close(); return ''; },
     whoami: () => (sasclops.inRoom() ? 'one who sees' : 'a visitor, for now'),
     sudo: () => 'nice try.',
     motd: () => (sasclops.inRoom()
-      ? `the room moves in ${untilRotation()} (00:00 UTC)`
+      ? `the room moves in ${untilRotation()} (00:00 UTC)\nnot everything here is visible.`
       : 'claritas ex datis, datum ex obscuris'),
 
     async cat(args, stdin) {
