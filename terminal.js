@@ -37,10 +37,22 @@
     }
   }
 
+  // Files written with > live in the visitor's browser. The site's own files are read-only.
+  const FS_KEY = 'sasclops.fs';
+  const MAX_FILES = 20;
+  const MAX_SIZE = 4000;
+  let local = {};
+  try { local = JSON.parse(localStorage.getItem(FS_KEY)) ?? {}; } catch {}
+  const saveLocal = () => { try { localStorage.setItem(FS_KEY, JSON.stringify(local)); } catch {} };
+
+  const FIRE_CONTROL = '# SASCLOPS fire control\nplot_memory=off';
+
   // Dotfiles that only exist inside the room; `ls -a` reveals them.
   const HIDDEN = {
     '.operator_log': operatorLog,
+    '.fire_control': () => local['.fire_control'] ?? FIRE_CONTROL,
   };
+  const READ_ONLY = new Set([...FILES, '.operator_log']);
   const HELP = `commands:
   ls              list files
   cat FILE        print a file
@@ -50,7 +62,8 @@
   cd PATH         go somewhere
   whoami  motd  clear  exit
 
-chain commands with |   e.g.  cat index.html | grep title`;
+chain commands with |   e.g.  cat index.html | grep title
+save output with >  (>> appends)   e.g.  echo hi > note.txt`;
   const ROOM_HELP = HELP.replace(
     '  whoami',
     '  restore N       rebuild a corrupted log entry\n  whoami',
@@ -100,6 +113,10 @@ chain commands with |   e.g.  cat index.html | grep title`;
       } else if (ch === '|') {
         end();
         stages.push([]);
+      } else if (ch === '>') {
+        const last = stages.at(-1).at(-1);
+        if (word === null && last?.redirect === '>') last.redirect = '>>';
+        else { end(); stages.at(-1).push({ redirect: '>' }); }
       } else if (/\s/.test(ch)) {
         end();
       } else {
@@ -115,12 +132,32 @@ chain commands with |   e.g.  cat index.html | grep title`;
   async function readFile(cmd, name) {
     const file = name.replace(/^(\.\/|\/)/, '');
     if (file === '.' || file === '..' || file === '') throw new ShellError(`${cmd}: ${name}: Is a directory`);
-    if (Object.hasOwn(HIDDEN, file) && sasclops.inRoom()) return HIDDEN[file]();
+    if (Object.hasOwn(HIDDEN, file)) {
+      if (sasclops.inRoom()) return HIDDEN[file]();
+      throw new ShellError(`${cmd}: ${name}: No such file or directory`);
+    }
+    if (Object.hasOwn(local, file)) return local[file];
     if (!FILES.includes(file)) throw new ShellError(`${cmd}: ${name}: No such file or directory`);
     if (file.endsWith('.png')) throw new ShellError(`${cmd}: ${name}: binary file (it's a picture of me)`);
     const res = await fetch(file, { cache: 'no-store' });
     if (!res.ok) throw new ShellError(`${cmd}: ${name}: could not read`);
     return (await res.text()).replace(/\n$/, '');
+  }
+
+  function writeFile(name, text, append) {
+    const file = name.replace(/^(\.\/|\/)/, '');
+    if (file === '.' || file === '..' || file === '') throw new ShellError(`sasclops: ${name}: Is a directory`);
+    if (READ_ONLY.has(file) || (Object.hasOwn(HIDDEN, file) && !sasclops.inRoom())) {
+      throw new ShellError(`sasclops: ${name}: Permission denied`);
+    }
+    if (!/^[\w.-]{1,40}$/.test(file)) throw new ShellError(`sasclops: ${name}: invalid file name`);
+    const exists = Object.hasOwn(local, file) || Object.hasOwn(HIDDEN, file);
+    if (!exists && Object.keys(local).length >= MAX_FILES) throw new ShellError('sasclops: No space left on device');
+    const before = append ? (local[file] ?? (Object.hasOwn(HIDDEN, file) ? HIDDEN[file]() : '')) : '';
+    const next = before && text ? `${before}\n${text}` : before + text;
+    if (next.length > MAX_SIZE) throw new ShellError(`sasclops: ${name}: File too large`);
+    local[file] = next;
+    saveLocal();
   }
 
   function untilRotation() {
@@ -145,7 +182,10 @@ chain commands with |   e.g.  cat index.html | grep title`;
       const bad = flags.replace(/[-al]/g, '');
       if (bad) throw new ShellError(`ls: invalid option -- '${bad[0]}'`);
       const hidden = sasclops.inRoom() ? Object.keys(HIDDEN) : [];
-      const names = flags.includes('a') ? ['.', '..', ...hidden, ...FILES] : FILES;
+      const mine = Object.keys(local).filter((f) => !Object.hasOwn(HIDDEN, f));
+      const names = flags.includes('a')
+        ? ['.', '..', ...hidden, ...mine.filter((f) => f.startsWith('.')), ...FILES, ...mine.filter((f) => !f.startsWith('.'))]
+        : [...FILES, ...mine.filter((f) => !f.startsWith('.'))];
       return names.join(flags.includes('l') ? '\n' : '  ');
     },
     echo: (args) => args.join(' '),
@@ -226,9 +266,20 @@ chain commands with |   e.g.  cat index.html | grep title`;
     rm(args) {
       const flags = args.filter((a) => a.startsWith('-')).join('');
       const everything = args.some((a) => a === '/' || a === '/*');
-      if (!(flags.includes('r') && flags.includes('f') && everything)) {
-        throw new ShellError('rm: permission denied');
+      if (!everything) {
+        const names = args.filter((a) => !a.startsWith('-')).map((a) => a.replace(/^(\.\/|\/)/, ''));
+        if (!names.length) throw new ShellError('usage: rm FILE');
+        for (const f of names) {
+          if (!Object.hasOwn(local, f)) {
+            const known = READ_ONLY.has(f) || (Object.hasOwn(HIDDEN, f) && sasclops.inRoom());
+            throw new ShellError(`rm: ${f}: ${known ? 'Permission denied' : 'No such file or directory'}`);
+          }
+        }
+        names.forEach((f) => delete local[f]);
+        saveLocal();
+        return '';
       }
+      if (!(flags.includes('r') && flags.includes('f'))) throw new ShellError('rm: /: Is a directory');
       glitch();
       setTimeout(() => print('…just kidding.'), 1000);
       return 'deleting / …';
@@ -236,14 +287,28 @@ chain commands with |   e.g.  cat index.html | grep title`;
   };
 
   async function run(line) {
+    const stages = parse(line);
+    let target = null;
+    stages.forEach((stage, i) => {
+      const at = stage.findIndex((t) => typeof t === 'object');
+      if (at === -1) return;
+      const name = stage[at + 1];
+      if (i !== stages.length - 1 || at === 0 || typeof name !== 'string' || at !== stage.length - 2) {
+        throw new ShellError('syntax error near >');
+      }
+      target = { name, append: stage[at].redirect === '>>' };
+      stage.splice(at, 2);
+    });
     let stdin = '';
-    for (const [name, ...args] of parse(line)) {
+    for (const [name, ...args] of stages) {
       const roomOnly = name === 'restore' || name === 'salvo';
       const cmd = Object.hasOwn(commands, name) && (!roomOnly || sasclops.inRoom()) ? commands[name] : null;
       if (!cmd) throw new ShellError(`sasclops: command not found: ${name}`);
       stdin = (await cmd(args, stdin)) ?? '';
     }
-    return stdin;
+    if (!target) return stdin;
+    writeFile(target.name, stdin, target.append);
+    return '';
   }
 
   form.addEventListener('submit', async (e) => {
@@ -297,6 +362,7 @@ chain commands with |   e.g.  cat index.html | grep title`;
   // Used by salvo.js to borrow the prompt.
   sasclops.term = {
     print,
+    readConfig: (file) => (Object.hasOwn(HIDDEN, file) ? HIDDEN[file]() : local[file] ?? ''),
     takeOver(program) { takeover = program; refreshPrompt(); },
     release() { takeover = null; refreshPrompt(); },
   };

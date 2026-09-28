@@ -9,7 +9,10 @@
   const FLOOR = 0.3;           // refreshed elements never fade below this
   const SHOT_FADE = 2600;      // ms: a white shot lights once, then fades for good
   const END_FADE = 4000;       // ms: the whole board after the game ends
-  const RGB = { grid: '40, 150, 255', ship: '40, 150, 255', shot: '255, 255, 255', hit: '255, 70, 70' };
+  const RGB = {
+    grid: '40, 150, 255', ship: '40, 150, 255', shot: '255, 255, 255', hit: '255, 70, 70',
+    plot: '255, 130, 0',       // remembered misses, with plot memory on
+  };
 
   const key = (c, r) => r * N + c;
   const label = (k) => `${COLS[k % N]}${Math.floor(k / N) + 1}`;
@@ -43,8 +46,11 @@
   const print = (text, kind) => sasclops.term.print(text, kind);
 
   function start() {
+    // Upgrade: `echo plot_memory=on > .fire_control` keeps your past strikes on the grid.
+    const plotMemory = /^\s*plot_memory\s*=\s*on\s*$/m.test(sasclops.term.readConfig('.fire_control'));
     game = {
       phase: 'place',          // place → wait ⇄ aim → over
+      plotMemory,
       player: null,
       fleet: null,
       startedAt: 0,
@@ -57,6 +63,7 @@
     sasclops.term.takeOver({ prompt: 'salvo>', onLine });
     print('SALVO — fire control online.');
     print('the grid is 10×10: columns a–j, rows 1–10. type quit to stand down.');
+    if (plotMemory) print('plot memory online: past strikes stay on the grid.');
     print('where do we launch counterstrikes from? (e.g. e5)');
   }
 
@@ -223,7 +230,9 @@
     ctx.shadowBlur = s * 0.4;
     fillCell(ctx, game.player, RGB.ship, 0.9 * lit(cellY(game.player), now, game.startedAt));
     for (const shot of game.shots) {
-      if (shot.by === 'you' && shot.hit) fillCell(ctx, shot.cell, RGB.hit, 0.95 * lit(cellY(shot.cell), now, shot.at));
+      if (shot.by !== 'you') continue;
+      if (shot.hit) fillCell(ctx, shot.cell, RGB.hit, 0.95 * lit(cellY(shot.cell), now, shot.at));
+      else if (game.plotMemory) fillCell(ctx, shot.cell, RGB.plot, 0.85 * lit(cellY(shot.cell), now, shot.at));
     }
     for (const shot of game.shots) {
       const at = shot.revealAt ?? sasclops.nextCross(cellY(shot.cell), shot.at);

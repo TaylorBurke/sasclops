@@ -71,6 +71,8 @@ The entry 021 text is stored XOR-sealed with its own number, so the answer isn't
 | `whoami` | `a visitor, for now` in the lobby; `one who sees` in the room |
 | `motd` | Tagline in the lobby; in the room, a countdown to the next rotation |
 | `sudo …` | `nice try.` |
+| `CMD > FILE` / `CMD >> FILE` | Write (or append) output to a file. Files live in the visitor's browser (localStorage, max 20 files of 4000 chars). The site's own files and `.operator_log` are read-only (`Permission denied`). `help` hints at it: *save output with >*. |
+| `rm FILE` | Deletes your own files; `rm .fire_control` resets it to the default |
 | `rm -rf /` | The screen glitches, then `…just kidding.` |
 | `clear`, `exit`, `help` | As expected; ↑/↓ recall history |
 
@@ -91,5 +93,16 @@ Everything waits for the sweep. The board appears on the next pass after you pic
 | Your ship | solid blue square | yes |
 | Any shot | white square | no; flashes once, then fades away |
 | Hit on an enemy ship | red square | yes |
+| Your miss, with plot memory | orange square | yes |
+
+**Plot memory upgrade:** in the room, `ls -a` also shows `.fire_control`:
+
+```
+$ cat .fire_control
+# SASCLOPS fire control
+plot_memory=off
+$ echo plot_memory=on > .fire_control
+$ salvo                                  # "plot memory online": your misses now stay orange
+```
 
 `radar.js` exposes `sasclops.addOverlay(draw)` and `sasclops.lastCross(y, t)` / `nextCross(y, t)` (when the bar crosses height `y`); `terminal.js` exposes `sasclops.term.takeOver()` so a program can borrow the prompt. Follow-ups: smarter enemy (#9), win reward (#10).
