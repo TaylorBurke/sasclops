@@ -18,6 +18,7 @@ python3 -m http.server 4173   # preview at http://127.0.0.1:4173
 | `radar.js` | Canvas radar, room check, and the sweep transition between rooms |
 | `terminal.js` | The hidden terminal and its commands |
 | `salvo.js` | SALVO, the Battleship minigame, drawn on the radar canvas |
+| `claw/index.html` | Pixel Claw, a standalone claw-machine game at `/claw/` (easter egg, see `claw` below) |
 | `scripts/rotate-room.mjs` | Picks a new room hash; run daily by `.github/workflows/rotate-room.yml` |
 
 ## The secret room (spoilers)
@@ -74,6 +75,7 @@ The entry 021 text is stored XOR-sealed with its own number, so the answer isn't
 | `CMD > FILE` / `CMD >> FILE` | Write (or append) output to a file. Files live in the visitor's browser (localStorage, max 20 files of 4000 chars). The site's own files and `.operator_log` are read-only (`Permission denied`). `help` hints at it: *save output with >*. |
 | `rm FILE` | Deletes your own files; `rm .fire_control` resets it to the default |
 | `rm -rf /` | The screen glitches, then `…just kidding.` |
+| `claw` | Unlisted easter egg, works anywhere: prints `insert coin…` and goes to the Pixel Claw game at `/claw/`. Esc or the back link returns to the site. |
 | `clear`, `exit`, `help` | As expected; ↑/↓ recall history |
 
 ### SALVO

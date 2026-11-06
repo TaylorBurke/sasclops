@@ -263,6 +263,12 @@ save output with >  (>> appends)   e.g.  echo hi > note.txt`;
       return '';
     },
 
+    // Easter egg, deliberately left out of `help`: the claw machine at /claw/.
+    claw() {
+      setTimeout(() => { location.href = 'claw/'; }, 900);
+      return 'insert coin…';
+    },
+
     rm(args) {
       const flags = args.filter((a) => a.startsWith('-')).join('');
       const everything = args.some((a) => a === '/' || a === '/*');
