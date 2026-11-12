@@ -6,7 +6,7 @@
     room:  { bg: '#04070b', accent: '40, 150, 255', core: '170, 215, 255' },
   };
   // Only the digest lives here; the room's hash rotates daily (scripts/rotate-room.mjs).
-  const ROOM_SHA256 = '2680ba17544a5b15cfa8c6a97dfc76aaca7d0c2717fb07418d709722e40ebeda';
+  const ROOM_SHA256 = '08a4df1dd93a278ceb93664150ab46455467410766f901d6a3215eab26855614';
   const CELL = 28;          // grid cell, CSS px
   const MAJOR_EVERY = 4;    // every Nth line is brighter
   const TRAIL = 220;        // lit wake behind the bar, CSS px
